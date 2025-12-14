@@ -71,7 +71,7 @@ async def calculate_phash(payload: ImageURL):
     
     # Nota: Ya no se requiere limpieza manual ya que no hay archivos temporales.
     
-    return {"phash": phash_value, "url": payload.url}
+    return {"phash": phash_value }
 
 
 # ----------------------------------------------------
@@ -107,9 +107,7 @@ async def compare_images(payload: ImageComparisonPayload):
 
         print(f"-> Distancia de Hamming calculada: {distance_int}. Similares: {is_similar}")
 
-        return {
-            "url_a": url_a,
-            "url_b": url_b,
+        return { 
             "phash_a": phash_a_str,
             "phash_b": phash_b_str,
             "hamming_distance": distance_int,
