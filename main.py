@@ -69,7 +69,7 @@ async def calculate_phash_from_url_optimized(image_url: str) -> str:
 # ----------------------------------------------------
 # Endpoint 1: Calcular un solo pHash
 # ----------------------------------------------------
-@app.post("/process-image/")
+@app.post("/phash/")
 async def calculate_phash(payload: ImageURL):
     """
     Descarga una imagen remota y calcula su pHash.
@@ -81,13 +81,13 @@ async def calculate_phash(payload: ImageURL):
 # ----------------------------------------------------
 # Endpoint 2: Comparar URL contra pHash Objetivo
 # ----------------------------------------------------
-@app.post("/compare-hash/")
+@app.post("/compare/phash-vs-image/")
 async def compare_hash(payload: ImageHashComparisonPayload):
     """
     Descarga una imagen (URL), calcula su pHash y lo compara con un pHash objetivo.
     """
     url = payload.url
-    phash_target_str = payload.phash_target
+    phash_target_str = payload.phash
     
     try:
         # 1. Calcular pHash de la nueva imagen (Optimizado en memoria)
@@ -137,7 +137,7 @@ async def compare_hash(payload: ImageHashComparisonPayload):
 # ----------------------------------------------------
 # Endpoint 3: Comparar dos URLs de Imágenes
 # ----------------------------------------------------
-@app.post("/compare-images/")
+@app.post("/compare/images/")
 async def compare_images(payload: ImageComparisonPayload):
     """
     Descarga dos imágenes remotas, calcula sus pHashes y la Distancia de Hamming.

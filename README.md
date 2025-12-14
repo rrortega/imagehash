@@ -35,7 +35,7 @@ Necesitas tener instalado:
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone [https://github.com/rrortega/phash-image-processor.git](https://github.com/tu-usuario/phash-image-processor.git)
+git clone https://github.com/rrortega/imagehash.git
 cd phash-image-processor
 ```
 
@@ -54,11 +54,11 @@ docker run -d --name phash-app -p 8000:80 phash-service
 ## ⚙️ Uso de la API
 El servicio expone dos endpoints principales vía HTTP POST.
 
-### Endpoint: /process-image/
+### Endpoint: /phash/
 Calcula el pHash de una imagen remota y devuelve el valor.
 | Método | Ruta |Descripción |
 | :--- | :---: | ---: |
-| POST | /process-image/ |Procesa la URL de una imagen y devuelve su pHash. |
+| POST | /phash/ |Procesa la URL de una imagen y devuelve su pHash. |
  
  ### Solicitud (Payload JSON)
  Debes enviar una URL de imagen válida en el cuerpo de la solicitud:
@@ -71,7 +71,7 @@ Calcula el pHash de una imagen remota y devuelve el valor.
 ### Ejemplo con curl: Sustituir la URL por una imagen real 
 
 ```bash
-curl -X POST "http://localhost:8000/process-image/" \
+curl -X POST "http://localhost:8000/phash/" \
      -H "Content-Type: application/json" \
      -d '{"url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c"}'
 ``` 
@@ -90,7 +90,7 @@ La respuesta JSON incluirá el pHash calculado como una cadena hexadecimal.
 |400 Bad Request|	Error al descargar la imagen...|	La URL no es válida, la imagen no existe (404), o error de red.|
 |500 Internal Server Error	| Error interno al procesar...	|El archivo descargado no es una imagen válida o la librería falló al procesar.|
 
-## Endpoint /compare-images/  
+## Endpoint /compare/images/  
 | Método | Ruta |	Descripción|
 | :--- | :---: | ---: | 
 | POST	| /compare-images/	| Comparar dos Imágenes (Distancia de Hamming).|
@@ -104,7 +104,7 @@ La respuesta JSON incluirá el pHash calculado como una cadena hexadecimal.
 ### Ejemplo con curl
 ``` bash
 # Se recomienda usar dos imágenes que sean idénticas o muy similares para probar la distancia baja.
-curl -X POST "http://localhost:8000/compare-images/" \
+curl -X POST "http://localhost:8000/compare/images/" \
      -H "Content-Type: application/json" \
      -d '{
            "url_a": "https://url-imagen-1/original.jpg",
@@ -123,20 +123,20 @@ curl -X POST "http://localhost:8000/compare-images/" \
 }
 ```
 
-## Endpoint /compare-hash/
+## Endpoint /compare/phash-vs-image/
 Descarga y procesa una imagen para compararla con un pHash conocido. Este es el método más rápido si ya tienes una base de datos de pHashes.
 |Parámetro	| Tipo |	Descripción |
 | :--- | :---: | ---: | 
 |url|	string	 | URL de la imagen a verificar.|
-|phash_target|	string	|pHash hexadecimal (16 caracteres) de la imagen de referencia.|
+|phash|	string	|pHash hexadecimal (16 caracteres) de la imagen de referencia.|
 
 ### Ejemplo con curl
 ```bash 
-curl -X POST "http://localhost:8000/compare-hash/" \
+curl -X POST "http://localhost:8000/phash-vs-image/" \
      -H "Content-Type: application/json" \
      -d '{
            "url": "https://url-imagen-1/new.jpg",
-           "phash_target": "f006797960714c11"
+           "phash": "f006797960714c11"
          }'
 ```
 ### Respuesta Exitosa (200 OK)
