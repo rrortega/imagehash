@@ -35,5 +35,106 @@ Necesitas tener instalado:
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone [https://github.com/tu-usuario/phash-image-processor.git](https://github.com/tu-usuario/phash-image-processor.git)
+git clone [https://github.com/rrortega/phash-image-processor.git](https://github.com/tu-usuario/phash-image-processor.git)
 cd phash-image-processor
+```
+
+### 2. Construir la Imagen de Docker
+Utiliza el Dockerfile provisto para construir la imagen.
+```bash
+docker build -t phash-service .
+```
+
+### 3. Ejecutar el Contenedor
+Ejecuta la imagen, mapeando el puerto interno 80 al puerto 8000 de tu máquina local.
+```bash
+docker run -d --name phash-app -p 8000:80 phash-service
+```
+
+## ⚙️ Uso de la API
+El servicio expone dos endpoints principales vía HTTP POST.
+
+### Endpoint: /process-image/
+Calcula el pHash de una imagen remota y devuelve el valor.
+| Método | Ruta |Descripción |
+| :--- | :---: | ---: |
+| POST | /process-image/ |Procesa la URL de una imagen y devuelve su pHash. |
+ 
+ ### Solicitud (Payload JSON)
+ Debes enviar una URL de imagen válida en el cuerpo de la solicitud:
+ ```json
+ {
+  "url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c" 
+}
+ ```  
+
+### Ejemplo con curl: Sustituir la URL por una imagen real 
+
+```bash
+curl -X POST "http://localhost:8000/process-image/" \
+     -H "Content-Type: application/json" \
+     -d '{"url": "https://images.unsplash.com/photo-1555066931-4365d14bab8c"}'
+``` 
+### Respuesta Exitosa (200 OK)
+La respuesta JSON incluirá el pHash calculado como una cadena hexadecimal.
+```bash
+{
+  "phash": "f006797960714c11" 
+}
+```
+
+### Respuestas de Error
+
+|Código	| Detalle |	Posible Causa |
+| :--- | :---: | ---: |
+|400 Bad Request|	Error al descargar la imagen...|	La URL no es válida, la imagen no existe (404), o error de red.|
+|500 Internal Server Error	| Error interno al procesar...	|El archivo descargado no es una imagen válida o la librería falló al procesar.|
+
+## Endpoint /compare-images/  
+| Método | Ruta |	Descripción|
+| :--- | :---: | ---: | 
+| POST	| /compare-images/	| Comparar dos Imágenes (Distancia de Hamming).|
+
+
+| Parámetro  | Tipo | Descripción | 
+| :--- | :---: | ---: |
+| url_a | string | URL de la primera  |
+| url_b | string | URL de la segunda imagen.|
+
+### Ejemplo con curl
+``` bash
+# Se recomienda usar dos imágenes que sean idénticas o muy similares para probar la distancia baja.
+curl -X POST "http://localhost:8000/compare-images/" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "url_a": "https://url-imagen-1/original.jpg",
+           "url_b": "https://url-imagen-2/modificada.jpg"
+         }'
+```
+
+### Respuesta
+```json
+{ 
+  "phash_a": "f006797960714c11",
+  "phash_b": "f006797960714c15",
+  "hamming_distance": 4,
+  "is_similar": true,
+  "note": "Una distancia de Hamming de 0 a 5 generalmente indica alta similitud visual."
+}
+```
+
+# 📁 Estructura del Proyecto
+```bash 
+imagehash/
+  ├── Dockerfile             # Define la imagen de Docker (Python, dependencias)
+  ├── entrypoint.sh          # Script de inicio que ejecuta Uvicorn   
+  ├── requirements.txt       # Lista las dependencias de Python (FastAPI, imagehash, etc.)
+  └── main.py                # Lógica principal de la API con FastAPI y el cálculo del pHash
+```
+
+# 📝 Licencia
+
+Este proyecto está bajo la Licencia MIT. Consulta el archivo LICENSE para más detalles.
+
+# 🧑‍💻 Contribuciones
+Las contribuciones son bienvenidas. Si tienes sugerencias o reportes de errores, por favor, abre un issue o envía un Pull Request.
