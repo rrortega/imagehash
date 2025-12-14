@@ -14,9 +14,14 @@ class ImageURL(BaseModel):
     url: str
 
 class ImageComparisonPayload(BaseModel):
-    """Nuevo modelo para el payload JSON de entrada para dos URLs."""
+    """Modelo para el payload JSON de entrada para dos URLs (comparación entre URLs)."""
     url_a: str
     url_b: str
+    
+class ImageHashComparisonPayload(BaseModel):
+    """Modelo para el payload JSON de entrada: 1 URL y 1 pHash string (comparación contra hash fijo)."""
+    url: str
+    phash_target: str
 
 # ----------------------------------------------------
 # Inicialización de FastAPI
@@ -28,12 +33,14 @@ app = FastAPI(title="pHash Image Processor", version="2.0.0 - Optimized")
 # ----------------------------------------------------
 async def calculate_phash_from_url_optimized(image_url: str) -> str:
     """
-    Descarga una imagen y calcula su pHash, manejando todo en memoria (BytesIO).
+    Descarga una imagen, calcula su pHash, manejando todo en memoria (BytesIO).
     Devuelve solo el pHash como string. Lanza HTTPException en caso de error.
     """
     print(f"-> Descargando imagen: {image_url}")
     try:
         # 1. Descargar la imagen
+        # Nota: requests.get puede ser bloqueante. En producción, considera usar httpx
+        # si se esperan muchas peticiones concurrentes y no quieres usar threads.
         response = requests.get(image_url)
         response.raise_for_status()  # Lanza excepción para códigos 4xx/5xx
 
@@ -60,22 +67,75 @@ async def calculate_phash_from_url_optimized(image_url: str) -> str:
         )
 
 # ----------------------------------------------------
-# Endpoint Existente: Calcular un solo pHash
+# Endpoint 1: Calcular un solo pHash
 # ----------------------------------------------------
 @app.post("/process-image/")
 async def calculate_phash(payload: ImageURL):
     """
-    Descarga una imagen remota y calcula su pHash (Perceptual Hash) usando manejo de memoria.
+    Descarga una imagen remota y calcula su pHash.
     """
     phash_value = await calculate_phash_from_url_optimized(payload.url)
     
-    # Nota: Ya no se requiere limpieza manual ya que no hay archivos temporales.
-    
     return {"phash": phash_value }
+
+# ----------------------------------------------------
+# Endpoint 2: Comparar URL contra pHash Objetivo
+# ----------------------------------------------------
+@app.post("/compare-hash/")
+async def compare_hash(payload: ImageHashComparisonPayload):
+    """
+    Descarga una imagen (URL), calcula su pHash y lo compara con un pHash objetivo.
+    """
+    url = payload.url
+    phash_target_str = payload.phash_target
+    
+    try:
+        # 1. Calcular pHash de la nueva imagen (Optimizado en memoria)
+        phash_new_str = await calculate_phash_from_url_optimized(url)
+        
+        # 2. Convertir los strings de hash a objetos Hash para la comparación
+        phash_new = imagehash.hex_to_hash(phash_new_str)
+        
+        try:
+            # Intentar convertir el pHash objetivo.
+            phash_target = imagehash.hex_to_hash(phash_target_str)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, 
+                detail="El pHash objetivo ('phash_target') no es un valor hexadecimal válido."
+            )
+
+        # 3. Calcular la Distancia de Hamming
+        distance = phash_new - phash_target 
+
+        # Corregir error de serialización: Convertir a int nativo
+        distance_int = int(distance)
+        
+        # 4. Determinar si son similares
+        is_similar = distance_int <= 5
+
+        print(f"-> pHash Nuevo: {phash_new_str} | pHash Objetivo: {phash_target_str}")
+        print(f"-> Distancia de Hamming calculada: {distance_int}. Similares: {is_similar}")
+
+        return { 
+            "phash_calculated": phash_new_str,
+            "phash_target": phash_target_str,
+            "hamming_distance": distance_int,
+            "is_similar": is_similar,
+            "note": "Una distancia de Hamming cercana a 0 (≤5) indica alta similitud."
+        }
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error inesperado al comparar el hash: {e}"
+        )
 
 
 # ----------------------------------------------------
-# Endpoint Corregido y Optimizado: Comparar dos imágenes
+# Endpoint 3: Comparar dos URLs de Imágenes
 # ----------------------------------------------------
 @app.post("/compare-images/")
 async def compare_images(payload: ImageComparisonPayload):
@@ -86,23 +146,23 @@ async def compare_images(payload: ImageComparisonPayload):
     url_b = payload.url_b
     
     try:
-        # 1. Calcular pHash A (Optimizado en memoria)
+        # 1. Calcular pHash A
         phash_a_str = await calculate_phash_from_url_optimized(url_a)
         
-        # 2. Calcular pHash B (Optimizado en memoria)
+        # 2. Calcular pHash B
         phash_b_str = await calculate_phash_from_url_optimized(url_b)
 
-        # Convertir los strings de hash a objetos Hash para la comparación
+        # Convertir los strings de hash a objetos Hash
         phash_a = imagehash.hex_to_hash(phash_a_str)
         phash_b = imagehash.hex_to_hash(phash_b_str)
 
-        # 3. Calcular la Distancia de Hamming (Resultado es numpy.int64)
+        # 3. Calcular la Distancia de Hamming
         distance = phash_a - phash_b 
 
-        # *** CORRECCIÓN CRÍTICA: Convertir a int nativo para JSON serialización ***
+        # Corregir error de serialización: Convertir a int nativo
         distance_int = int(distance)
         
-        # 4. Determinar si son similares (Umbral típico es <= 5)
+        # 4. Determinar si son similares
         is_similar = distance_int <= 5
 
         print(f"-> Distancia de Hamming calculada: {distance_int}. Similares: {is_similar}")
@@ -114,9 +174,8 @@ async def compare_images(payload: ImageComparisonPayload):
             "is_similar": is_similar,
             "note": "Una distancia de Hamming cercana a 0 (≤5) indica alta similitud."
         }
-        
+
     except HTTPException as e:
-        # Re-lanzar la excepción HTTP generada por calculate_phash_from_url_optimized
         raise e
     except Exception as e:
         raise HTTPException(
@@ -126,7 +185,7 @@ async def compare_images(payload: ImageComparisonPayload):
 
 
 # ----------------------------------------------------
-# Endpoint de prueba
+# Endpoint de prueba (Health Check)
 # ----------------------------------------------------
 @app.get("/")
 def health_check():

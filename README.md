@@ -123,6 +123,33 @@ curl -X POST "http://localhost:8000/compare-images/" \
 }
 ```
 
+## Endpoint /compare-hash/
+Descarga y procesa una imagen para compararla con un pHash conocido. Este es el método más rápido si ya tienes una base de datos de pHashes.
+|Parámetro	| Tipo |	Descripción |
+| :--- | :---: | ---: | 
+|url|	string	 | URL de la imagen a verificar.|
+|phash_target|	string	|pHash hexadecimal (16 caracteres) de la imagen de referencia.|
+
+### Ejemplo con curl
+```bash 
+curl -X POST "http://localhost:8000/compare-hash/" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "url": "https://url-imagen-1/new.jpg",
+           "phash_target": "f006797960714c11"
+         }'
+```
+### Respuesta Exitosa (200 OK)
+```json
+{ 
+  "phash_calculated": "f006797960714c15",
+  "phash_target": "f006797960714c11",
+  "hamming_distance": 4,
+  "is_similar": true,
+  "note": "Una distancia de Hamming cercana a 0 (≤5) indica alta similitud."
+}
+```
+
 # 📁 Estructura del Proyecto
 ```bash 
 imagehash/
