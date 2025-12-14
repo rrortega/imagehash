@@ -48,17 +48,19 @@ def calculate_phash():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type. Allowed types: ' + ', '.join(ALLOWED_EXTENSIONS)}), 400
     
-    # Check file size
-    file.seek(0, 2)  # Seek to end of file
-    file_size = file.tell()
-    file.seek(0)  # Reset to beginning
-    
-    if file_size > MAX_FILE_SIZE:
+    # Check file size using content length if available
+    content_length = request.content_length
+    if content_length and content_length > MAX_FILE_SIZE:
         return jsonify({'error': f'File too large. Maximum size: {MAX_FILE_SIZE / (1024 * 1024)} MB'}), 400
     
     try:
         # Read image from uploaded file
         image_bytes = file.read()
+        
+        # Additional size check after reading
+        if len(image_bytes) > MAX_FILE_SIZE:
+            return jsonify({'error': f'File too large. Maximum size: {MAX_FILE_SIZE / (1024 * 1024)} MB'}), 400
+        
         image = Image.open(io.BytesIO(image_bytes))
         
         # Verify it's a valid image by attempting to load it
@@ -71,8 +73,7 @@ def calculate_phash():
         hash_value = imagehash.phash(image)
         
         return jsonify({
-            'phash': str(hash_value),
-            'hash_size': hash_value.hash.size
+            'phash': str(hash_value)
         }), 200
     
     except Exception as e:
