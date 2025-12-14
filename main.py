@@ -3,9 +3,8 @@ import imagehash
 from PIL import Image
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import tempfile
-import os
-from typing import Tuple # Necesario para la pista de tipo de la función de ayuda
+from io import BytesIO
+from typing import Tuple
 
 # ----------------------------------------------------
 # Pydantic Models
@@ -22,46 +21,42 @@ class ImageComparisonPayload(BaseModel):
 # ----------------------------------------------------
 # Inicialización de FastAPI
 # ----------------------------------------------------
-app = FastAPI(title="pHash Image Processor", version="1.0.0")
+app = FastAPI(title="pHash Image Processor", version="2.0.0 - Optimized")
 
 # ----------------------------------------------------
-# Función de Ayuda para Descargar y Calcular pHash
+# Función de Ayuda Optimizado: Descargar y Calcular pHash SIN DISCO
 # ----------------------------------------------------
-async def calculate_phash_from_url(image_url: str) -> Tuple[str, str]:
+async def calculate_phash_from_url_optimized(image_url: str) -> str:
     """
-    Descarga una imagen, calcula su pHash, y devuelve el pHash y la ruta temporal.
-    Lanza HTTPException en caso de error.
+    Descarga una imagen y calcula su pHash, manejando todo en memoria (BytesIO).
+    Devuelve solo el pHash como string. Lanza HTTPException en caso de error.
     """
-    temp_filepath = None
+    print(f"-> Descargando imagen: {image_url}")
     try:
-        response = requests.get(image_url, stream=True)
-        response.raise_for_status()
+        # 1. Descargar la imagen
+        response = requests.get(image_url)
+        response.raise_for_status()  # Lanza excepción para códigos 4xx/5xx
 
-        # Usar archivo temporal
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_filepath = temp_file.name
-        for chunk in response.iter_content(chunk_size=8192):
-            temp_file.write(chunk)
-        temp_file.close()
-
-        img = Image.open(temp_filepath)
+        # 2. Manejar en memoria con BytesIO (EVITA I/O DE DISCO)
+        image_data = BytesIO(response.content)
+        
+        # 3. Abrir y calcular el pHash
+        img = Image.open(image_data)
         phash_value = str(imagehash.phash(img))
         
-        return phash_value, temp_filepath
+        return phash_value
 
     except requests.exceptions.RequestException as e:
-        if temp_filepath and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        # Errores de red, URL no válida, o HTTP (404, 500, etc.)
         raise HTTPException(
             status_code=400, 
-            detail=f"Error al descargar la imagen de la URL ({image_url}): {e}"
+            detail=f"Error al descargar la imagen de la URL proporcionada ({image_url}): {e}"
         )
     except Exception as e:
-        if temp_filepath and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
+        # Otros errores (ej. el archivo no es una imagen válida)
         raise HTTPException(
             status_code=500, 
-            detail=f"Error al procesar la imagen ({image_url}): {e}"
+            detail=f"Error interno al procesar la imagen ({image_url}): {e}. Asegúrese de que el archivo es una imagen válida."
         )
 
 # ----------------------------------------------------
@@ -70,21 +65,17 @@ async def calculate_phash_from_url(image_url: str) -> Tuple[str, str]:
 @app.post("/process-image/")
 async def calculate_phash(payload: ImageURL):
     """
-    Descarga una imagen remota y calcula su pHash (Perceptual Hash).
+    Descarga una imagen remota y calcula su pHash (Perceptual Hash) usando manejo de memoria.
     """
-    phash_value, temp_filepath = None, None
-    try:
-        phash_value, temp_filepath = await calculate_phash_from_url(payload.url)
-        return {"phash": phash_value }
-    finally:
-        # Eliminar el archivo temporal
-        if temp_filepath and os.path.exists(temp_filepath):
-            os.remove(temp_filepath)
-            print(f"-> Archivo temporal eliminado: {temp_filepath}")
+    phash_value = await calculate_phash_from_url_optimized(payload.url)
+    
+    # Nota: Ya no se requiere limpieza manual ya que no hay archivos temporales.
+    
+    return {"phash": phash_value, "url": payload.url}
 
 
 # ----------------------------------------------------
-# NUEVO Endpoint: Comparar dos imágenes
+# Endpoint Corregido y Optimizado: Comparar dos imágenes
 # ----------------------------------------------------
 @app.post("/compare-images/")
 async def compare_images(payload: ImageComparisonPayload):
@@ -94,49 +85,47 @@ async def compare_images(payload: ImageComparisonPayload):
     url_a = payload.url_a
     url_b = payload.url_b
     
-    # Variables para limpiar los archivos temporales en caso de éxito o fallo
-    temp_path_a, temp_path_b = None, None
-    
     try:
-        # 1. Calcular pHash A
-        print(f"-> Calculando pHash para A: {url_a}")
-        phash_a_str, temp_path_a = await calculate_phash_from_url(url_a)
+        # 1. Calcular pHash A (Optimizado en memoria)
+        phash_a_str = await calculate_phash_from_url_optimized(url_a)
         
-        # 2. Calcular pHash B
-        print(f"-> Calculando pHash para B: {url_b}")
-        phash_b_str, temp_path_b = await calculate_phash_from_url(url_b)
+        # 2. Calcular pHash B (Optimizado en memoria)
+        phash_b_str = await calculate_phash_from_url_optimized(url_b)
 
         # Convertir los strings de hash a objetos Hash para la comparación
         phash_a = imagehash.hex_to_hash(phash_a_str)
         phash_b = imagehash.hex_to_hash(phash_b_str)
 
-        # 3. Calcular la Distancia de Hamming
-        # La distancia es el número de bits diferentes. 0 significa idénticos.
+        # 3. Calcular la Distancia de Hamming (Resultado es numpy.int64)
         distance = phash_a - phash_b 
 
-        # 4. Determinar si son similares (Umbral típico es < 5)
-        # Esto es un ejemplo, el umbral real depende del caso de uso.
-        is_similar = distance <= 5
+        # *** CORRECCIÓN CRÍTICA: Convertir a int nativo para JSON serialización ***
+        distance_int = int(distance)
+        
+        # 4. Determinar si son similares (Umbral típico es <= 5)
+        is_similar = distance_int <= 5
 
-        print(f"-> Distancia de Hamming calculada: {distance}. Similares: {is_similar}")
+        print(f"-> Distancia de Hamming calculada: {distance_int}. Similares: {is_similar}")
 
-        return { 
+        return {
+            "url_a": url_a,
+            "url_b": url_b,
             "phash_a": phash_a_str,
             "phash_b": phash_b_str,
-            "hamming_distance": distance,
+            "hamming_distance": distance_int,
             "is_similar": is_similar,
-            "note": "Una distancia de Hamming cercana a 0 indica alta similitud."
+            "note": "Una distancia de Hamming cercana a 0 (≤5) indica alta similitud."
         }
+        
+    except HTTPException as e:
+        # Re-lanzar la excepción HTTP generada por calculate_phash_from_url_optimized
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error inesperado al comparar imágenes: {e}"
+        )
 
-    finally:
-        # 5. Limpieza de archivos temporales (Asegurar que se ejecute siempre)
-        if temp_path_a and os.path.exists(temp_path_a):
-            os.remove(temp_path_a)
-            print(f"-> Archivo temporal A eliminado: {temp_path_a}")
-            
-        if temp_path_b and os.path.exists(temp_path_b):
-            os.remove(temp_path_b)
-            print(f"-> Archivo temporal B eliminado: {temp_path_b}")
 
 # ----------------------------------------------------
 # Endpoint de prueba
